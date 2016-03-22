@@ -2,7 +2,7 @@ package grorm
 
 import (
 	"github.com/garyburd/redigo/redis"
-	// "reflect"
+	"reflect"
 )
 
 type Conn struct {
@@ -26,6 +26,12 @@ func (c *Conn) Close() {
 }
 
 func (c *Conn) Save(object interface{}) error {
+	t := reflect.TypeOf(object)
+
+	for i := 0; i < t.NumField(); i++ {
+		// f := t.Field(i)
+	}
+
 	return nil
 }
 
