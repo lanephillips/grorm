@@ -5,12 +5,15 @@ import (
 )
 
 type Thing struct {
-	id int
+	id uint64
 	name string
 }
 
 func TestServer(t *testing.T) {
 	r := NewRouter()
-	r.RegisterType(Thing{}, nil)
+	err := r.RegisterType(Thing{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	r.ListenAndServe(":8080")
 }
