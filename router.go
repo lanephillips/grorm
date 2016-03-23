@@ -27,16 +27,17 @@ func (r *Router) RegisterType(object interface{}, nameOrNil *string) error {
 	}
 
 	// TODO: check that struct conforms
-	f, ok := t.FieldByName("id")
+	f, ok := t.FieldByName("Id")
 	if !ok {
-		return fmt.Errorf("An 'id' field is required.")
+		return fmt.Errorf("An 'Id' field is required.")
 	}
 	if f.Type.Kind() != reflect.Uint64 {
-		return fmt.Errorf("Type of 'id' must be uint64.")
+		return fmt.Errorf("Type of 'Id' must be uint64.")
 	}
 
 	// TODO: build ACL objects from field annotations
 
+	// TODO: field names are still capitalized, do we really want Go style to leak through? maybe have pluggable mappers
 	if nameOrNil == nil {
 		s := strings.ToLower(t.Name())
 		nameOrNil = &s
@@ -85,6 +86,7 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
 		o := reflect.New(t).Elem()
 
 		// fill in fields from JSON
+		// TODO: this all will probably need to be factored out for PUT
 		// TODO: accept zero value for unspecified field unless annotated otherwise
 		d := json.NewDecoder(rq.Body)
 		m := map[string]interface{}{}
@@ -96,23 +98,35 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
 
 		for k, v := range m {
 			// error if id is specified
-			if k == "id" {
-				http.Error(w, "You may not set the 'id' field.", http.StatusBadRequest)
+			if k == "Id" {
+				http.Error(w, "You may not set the 'Id' field.", http.StatusBadRequest)
 				return
 			}
 
-			f, ok := t.FieldByName(k)
+			f := o.FieldByName(k)
 			// error on extra fields
-			if !ok {
-				http.Error(w, fmt.Sprintf("Request body specifies field '%v' which does not exist.", k), http.StatusBadRequest)
+			if !f.IsValid() || !f.CanSet() {
+				http.Error(w, fmt.Sprintf("Request body specifies field '%v' which cannot be set.", k), http.StatusBadRequest)
 				return
 			}
 
-			// TODO: actually set value
-			fmt.Fprintf(w, "Set %v to %v!\n", f, v)
+			v2 := reflect.ValueOf(v)
+			if !v2.Type().AssignableTo(f.Type()) {
+				http.Error(w, fmt.Sprintf("Field '%v' cannot take the value %v.", k, v), http.StatusBadRequest)
+				return
+			}
+
+			// actually set value
+			// TODO: probably should try to catch panic if possible, might have forgotten something above
+			f.Set(v2)
 		}
-		// TODO: save the object in Redis and return JSON including the new id
-		fmt.Fprintf(w, "Saved %v!", o)
+
+		// TODO: save the object in Redis
+
+		// return JSON including the new id
+		w.Header().Set("Content-Type", "application/json")
+		e := json.NewEncoder(w)
+		e.Encode(o.Interface())
 	    return
 
 		// TODO: or add object id to list field

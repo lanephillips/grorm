@@ -5,8 +5,8 @@ import (
 )
 
 type Thing struct {
-	id uint64
-	name string
+	Id uint64
+	Name string
 }
 
 func TestServer(t *testing.T) {
