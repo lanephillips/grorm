@@ -2,6 +2,7 @@ package grorm
 
 import (
     "fmt"
+    "encoding/json"
     "log"
     "net/http"
     "reflect"
@@ -25,13 +26,21 @@ func (r *Router) RegisterType(object interface{}, nameOrNil *string) error {
 		return fmt.Errorf("A struct type is required.")
 	}
 
+	// TODO: check that struct conforms
+	f, ok := t.FieldByName("id")
+	if !ok {
+		return fmt.Errorf("An 'id' field is required.")
+	}
+	if f.Type.Kind() != reflect.Uint64 {
+		return fmt.Errorf("Type of 'id' must be uint64.")
+	}
+
+	// TODO: build ACL objects from field annotations
+
 	if nameOrNil == nil {
 		s := strings.ToLower(t.Name())
 		nameOrNil = &s
 	}
-
-	// TODO: build ACL objects from field annotations
-	// TODO: check that struct conforms
 
 	r.types[*nameOrNil] = t
 	log.Printf("Registered type %v with path \"%v\".\n", t, *nameOrNil)
@@ -72,12 +81,42 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
 	}
 
 	if rq.Method == "POST" {
-		// TODO: create new object from JSON in body
+		// create new object from JSON in body
+		o := reflect.New(t).Elem()
+
+		// fill in fields from JSON
+		// TODO: accept zero value for unspecified field unless annotated otherwise
+		d := json.NewDecoder(rq.Body)
+		m := map[string]interface{}{}
+		err := d.Decode(&m)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		for k, v := range m {
+			// error if id is specified
+			if k == "id" {
+				http.Error(w, "You may not set the 'id' field.", http.StatusBadRequest)
+				return
+			}
+
+			f, ok := t.FieldByName(k)
+			// error on extra fields
+			if !ok {
+				http.Error(w, fmt.Sprintf("Request body specifies field '%v' which does not exist.", k), http.StatusBadRequest)
+				return
+			}
+
+			// TODO: actually set value
+			fmt.Fprintf(w, "Set %v to %v!\n", f, v)
+		}
+		// TODO: save the object in Redis and return JSON including the new id
+		fmt.Fprintf(w, "Saved %v!", o)
+	    return
+
 		// TODO: or add object id to list field
 
-		// TODO: accept zero value for unspecified field unless annotated otherwise
-		// TODO: error on extra fields
-		// TODO: error if id is specified
 	}
 
 	if rq.Method == "PUT" {
