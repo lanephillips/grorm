@@ -6,6 +6,7 @@ import (
     "log"
     "net/http"
     "reflect"
+    "strconv"
     "strings"
 )
 
@@ -82,9 +83,35 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
 	if rq.Method == "GET" {
 		// TODO: search all objects filter with query parms
 		// TODO: or get object by id
+		if len(path) > 2 && path[2] != "" {
+			id, err := strconv.ParseUint(path[2], 10, 64)
+			if err != nil {
+				http.Error(w, path[2] + " is not a valid Id.", http.StatusBadRequest)
+				return
+			}
+
+			po := reflect.New(t)
+			err = r.store.Load(id, po.Interface())
+			if err == ErrNotFound {
+				http.Error(w, rq.URL.Path + " not found.", http.StatusNotFound)
+				return
+			}
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			// return JSON including the new id
+			w.Header().Set("Content-Type", "application/json")
+			e := json.NewEncoder(w)
+			e.Encode(po.Interface())
+			return
+		}
 		// TODO: or get scalar field
 		// TODO: or get list field
-	    fmt.Fprintf(w, "Hi there, I love %v!", t)
+
+		// TODO: maybe illegal paths should be bad request, reserve 404 for actual missing object
+		http.Error(w, rq.URL.Path + " not found.", http.StatusNotFound)
 	    return
 	}
 
@@ -139,7 +166,7 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
 		// return JSON including the new id
 		w.Header().Set("Content-Type", "application/json")
 		e := json.NewEncoder(w)
-		e.Encode(o.Interface())
+		e.Encode(po.Interface())
 	    return
 
 		// TODO: or add object id to list field

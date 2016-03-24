@@ -1,15 +1,19 @@
 package grorm
 
 import (
+	"errors"
 	"fmt"
 	"github.com/garyburd/redigo/redis"
 	"reflect"
+	"strconv"
 )
 
 type Conn struct {
 	conn redis.Conn
 	appPrefix string
 }
+
+var ErrNotFound = errors.New("grorm: Not found.")
 
 func NewConn(appPrefix string) (*Conn, error) {
 	var c Conn
@@ -81,6 +85,66 @@ func (c *Conn) Save(object interface{}) error {
 	return nil
 }
 
-func (c *Conn) Load(id int64, object interface{}) error {
+func (c *Conn) Load(id uint64, object interface{}) error {
+	t := reflect.TypeOf(object)
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+		if t.Kind() != reflect.Struct {
+			return fmt.Errorf("Object is a pointer to %v, not a pointer to struct.", t.Kind())
+		}
+	} else {
+		return fmt.Errorf("Object is a %v, not a pointer to struct.", t.Kind())
+	}
+	v := reflect.ValueOf(object).Elem()
+
+	idf := v.FieldByName("Id")
+	if !idf.IsValid() || idf.Kind() != reflect.Uint64 {
+		return fmt.Errorf("Object does not have an Id field.")
+	}
+	idf.Set(reflect.ValueOf(id))
+
+	key := fmt.Sprintf("%v:%v:%v", c.appPrefix, t.Name(), id)
+	values, err := redis.StringMap(c.conn.Do("HGETALL", key))
+	if err != nil {
+		return err
+	}
+	if len(values) == 0 {
+		return ErrNotFound
+	}
+
+	for name, value := range values {
+		f, ok := t.FieldByName(name)
+		if !ok {
+			continue
+		}
+
+		var value2 reflect.Value
+
+		switch f.Type.Kind() {
+		case reflect.String:
+			value2 = reflect.ValueOf(value)
+
+		case reflect.Int64:
+			i, err := strconv.ParseInt(value, 10, 64)
+			if err != nil {
+				continue
+			}
+			value2 = reflect.ValueOf(i)
+
+		case reflect.Uint64:
+			i, err := strconv.ParseUint(value, 10, 64)
+			if err != nil {
+				continue
+			}
+			value2 = reflect.ValueOf(i)
+			
+		default:
+			continue
+		}
+
+		v.FieldByIndex(f.Index).Set(value2)
+		// fmt.Printf("Set %v to %v.\n", f, value2)
+	}
+
 	return nil
 }
