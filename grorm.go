@@ -148,3 +148,15 @@ func (c *Conn) Load(id uint64, object interface{}) error {
 
 	return nil
 }
+
+func (c *Conn) Delete(typeName string, id uint64) error {
+	key := fmt.Sprintf("%v:%v:%v", c.appPrefix, typeName, id)
+	count, err := redis.Int64(c.conn.Do("DEL", key))
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

@@ -177,14 +177,38 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
 		// TODO: update object with id with values from JSON
 		// TODO: or update scalar field
 		// TODO: or set whole list field
+		http.Error(w, "Not implemented.", http.StatusNotImplemented)
+		return
 	}
 
 	if rq.Method == "DELETE" {
 		// TODO: delete object with id
+		if len(path) > 2 && path[2] != "" {
+			id, err := strconv.ParseUint(path[2], 10, 64)
+			if err != nil {
+				http.Error(w, path[2] + " is not a valid Id.", http.StatusBadRequest)
+				return
+			}
+
+			err = r.store.Delete(t.Name(), id)
+			if err == ErrNotFound {
+				http.Error(w, rq.URL.Path + " not found.", http.StatusNotFound)
+				return
+			}
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			return
+		}
 		// TODO: or remove object id from a list field
+
+		// TODO: maybe illegal paths should be bad request, reserve 404 for actual missing object
+		http.Error(w, rq.URL.Path + " not found.", http.StatusNotFound)
+	    return
 	}
 
-    http.Error(w, "Bad request.", http.StatusBadRequest)
+    http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
 }
 
 func (r *Router) ListenAndServe(addr string) error {
