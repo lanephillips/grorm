@@ -5,7 +5,6 @@ import (
     "encoding/json"
     "net/http"
     "reflect"
-    "strconv"
     "strings"
 )
 
@@ -24,61 +23,66 @@ func (r *router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
 
 	// tokenize path
 	path := strings.Split(rq.URL.Path, "/")
-	if len(path) < 2 {
-		s := fmt.Sprintf("%v not found.", path)
-		http.Error(w, s, http.StatusNotFound)
-		return
-	}
-
-	// look up type name
-	t, ok := r.server.types[path[1]]
-	if !ok {
-		http.Error(w, path[1] + " not found.", http.StatusNotFound)
-		return
-	}
 
 	// TODO: retrieve object or list from redis
 	// TODO: demux method
 	// TODO: test ACL for method and user
 
 	if rq.Method == "GET" {
-		// TODO: search all objects filter with query parms
-		// TODO: or get object by id
-		if len(path) > 2 && path[2] != "" {
-			id, err := strconv.ParseUint(path[2], 10, 64)
-			if err != nil {
-				http.Error(w, path[2] + " is not a valid Id.", http.StatusBadRequest)
-				return
-			}
+		t, po, err := r.server.resolver.resolvePathObject(path)
+		if err == errBadId || err == errPathExtra {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err == errNotFound {
+			http.Error(w, rq.URL.Path + " not found.", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 
-			po := reflect.New(t)
-			err = r.server.store.load(id, po.Interface())
-			if err == errNotFound {
-				http.Error(w, rq.URL.Path + " not found.", http.StatusNotFound)
-				return
-			}
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-
-			// return JSON including the new id
+		if po == nil {
+			// TODO: search all objects filter with query parms
+			http.Error(w, (*t).Name(), http.StatusNotImplemented)
+			return
+		} else {
+			// or get object by id
 			w.Header().Set("Content-Type", "application/json")
 			e := json.NewEncoder(w)
 			e.Encode(po.Interface())
 			return
 		}
+
 		// TODO: or get scalar field
 		// TODO: or get list field
-
-		// TODO: maybe illegal paths should be bad request, reserve 404 for actual missing object
-		http.Error(w, rq.URL.Path + " not found.", http.StatusNotFound)
-	    return
 	}
 
 	if rq.Method == "POST" {
+		// path should just be a type
+		// TODO: or add object id to list field
+		t, id, err := r.server.resolver.resolvePath(path)
+		if err == errBadId || err == errPathExtra {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		// TODO: too much error checking, maybe make more specialized implementations of resolvePath
+		if id != nil {
+			http.Error(w, "You can't POST to an Id.", http.StatusBadRequest)
+			return
+		}
+		if err == errNotFound {
+			http.Error(w, rq.URL.Path + " not found.", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
 		// create new object from JSON in body
-		po := reflect.New(t)
+		po := reflect.New(*t)
 		o := po.Elem()
 
 		// fill in fields from JSON
@@ -86,7 +90,7 @@ func (r *router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
 		// TODO: accept zero value for unspecified field unless annotated otherwise
 		d := json.NewDecoder(rq.Body)
 		m := map[string]interface{}{}
-		err := d.Decode(&m)
+		err = d.Decode(&m)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -129,9 +133,6 @@ func (r *router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
 		e := json.NewEncoder(w)
 		e.Encode(po.Interface())
 	    return
-
-		// TODO: or add object id to list field
-
 	}
 
 	if rq.Method == "PUT" {
@@ -143,30 +144,36 @@ func (r *router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
 	}
 
 	if rq.Method == "DELETE" {
-		// TODO: delete object with id
-		if len(path) > 2 && path[2] != "" {
-			id, err := strconv.ParseUint(path[2], 10, 64)
-			if err != nil {
-				http.Error(w, path[2] + " is not a valid Id.", http.StatusBadRequest)
-				return
-			}
-
-			err = r.server.store.delete(t.Name(), id)
-			if err == errNotFound {
-				http.Error(w, rq.URL.Path + " not found.", http.StatusNotFound)
-				return
-			}
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
+		// delete object with id
+		t, id, err := r.server.resolver.resolvePath(path)
+		if err == errBadId || err == errPathExtra {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		// TODO: or remove object id from a list field
+		if err == errNotFound {
+			http.Error(w, rq.URL.Path + " not found.", http.StatusNotFound)
+			return
+		}
+		if id == nil {
+			http.Error(w, "Missing Id.", http.StatusBadRequest)
+			return
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 
-		// TODO: maybe illegal paths should be bad request, reserve 404 for actual missing object
-		http.Error(w, rq.URL.Path + " not found.", http.StatusNotFound)
-	    return
+		err = r.server.store.delete((*t).Name(), *id)
+		if err == errNotFound {
+			http.Error(w, rq.URL.Path + " not found.", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		return
+		// TODO: or remove object id from a list field
 	}
 
     http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
