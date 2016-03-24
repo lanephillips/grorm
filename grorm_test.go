@@ -10,7 +10,7 @@ type Thing struct {
 }
 
 func TestServer(t *testing.T) {
-	r, err := NewRouter("grormtest")
+	r, err := NewServer("grormtest")
 	if err != nil {
 		t.Fatal(err)
 	}

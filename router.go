@@ -3,60 +3,21 @@ package grorm
 import (
     "fmt"
     "encoding/json"
-    "log"
     "net/http"
     "reflect"
     "strconv"
     "strings"
 )
 
-type Router struct {
-	store store
-	types map[string]reflect.Type
+type router struct {
+	server *Server
 }
 
-func NewRouter(appPrefix string) (*Router, error) {
-	c, err := newRedisStore(appPrefix)
-	if err != nil {
-		return nil, err
-	}
-
-	var r Router
-	r.store = c
-	r.types = map[string]reflect.Type{}
-	return &r, nil
+func newRouter(server *Server) *router {
+	return &router{ server }
 }
 
-func (r *Router) RegisterType(object interface{}, nameOrNil *string) error {
-	t := reflect.TypeOf(object)
-
-	if t.Kind() != reflect.Struct {
-		return fmt.Errorf("A struct type is required.")
-	}
-
-	// TODO: check that struct conforms
-	f, ok := t.FieldByName("Id")
-	if !ok {
-		return fmt.Errorf("An 'Id' field is required.")
-	}
-	if f.Type.Kind() != reflect.Uint64 {
-		return fmt.Errorf("Type of 'Id' must be uint64.")
-	}
-
-	// TODO: build ACL objects from field annotations
-
-	// TODO: field names are still capitalized, do we really want Go style to leak through? maybe have pluggable mappers
-	if nameOrNil == nil {
-		s := strings.ToLower(t.Name())
-		nameOrNil = &s
-	}
-
-	r.types[*nameOrNil] = t
-	log.Printf("Registered type %v with path \"%v\".\n", t, *nameOrNil)
-	return nil
-}
-
-func (r *Router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
+func (r *router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
 	// TODO: rate limiting
 	// TODO: authenticate user
 	// TODO: strip api prefix
@@ -70,7 +31,7 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
 	}
 
 	// look up type name
-	t, ok := r.types[path[1]]
+	t, ok := r.server.types[path[1]]
 	if !ok {
 		http.Error(w, path[1] + " not found.", http.StatusNotFound)
 		return
@@ -91,7 +52,7 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
 			}
 
 			po := reflect.New(t)
-			err = r.store.load(id, po.Interface())
+			err = r.server.store.load(id, po.Interface())
 			if err == errNotFound {
 				http.Error(w, rq.URL.Path + " not found.", http.StatusNotFound)
 				return
@@ -157,7 +118,7 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
 		}
 
 		// save the object to DB
-		err = r.store.save(po.Interface())
+		err = r.server.store.save(po.Interface())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -190,7 +151,7 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
 				return
 			}
 
-			err = r.store.delete(t.Name(), id)
+			err = r.server.store.delete(t.Name(), id)
 			if err == errNotFound {
 				http.Error(w, rq.URL.Path + " not found.", http.StatusNotFound)
 				return
@@ -209,13 +170,4 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
 	}
 
     http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
-}
-
-func (r *Router) ListenAndServe(addr string) error {
-	return http.ListenAndServe(addr, r)
-}
-
-// TODO: disable above, require TLS
-func (r *Router) ListenAndServeTLS(addr, certFile, keyFile string) error {
-    return http.ListenAndServeTLS(addr, certFile, keyFile, r)
 }
