@@ -104,10 +104,37 @@ func (r *router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
 
 	if rq.Method == "PUT" {
 		// TODO: update object with id with values from JSON
+		_, po, err := r.server.resolver.resolvePathObject(path)
+		if err == errBadId || err == errPathExtra {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err == errNotFound {
+			http.Error(w, rq.URL.Path + " not found.", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if po == nil {
+			http.Error(w, "No object Id was given.", http.StatusBadRequest)
+			return
+		}
+
+		err = copyJsonToObject(rq.Body, *po)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		e := json.NewEncoder(w)
+		e.Encode((*po).Interface())
+		return
+
 		// TODO: or update scalar field
 		// TODO: or set whole list field
-		http.Error(w, "Not implemented.", http.StatusNotImplemented)
-		return
 	}
 
 	if rq.Method == "DELETE" {
