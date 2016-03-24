@@ -11,12 +11,12 @@ import (
 )
 
 type Router struct {
-	store *Conn
+	store store
 	types map[string]reflect.Type
 }
 
 func NewRouter(appPrefix string) (*Router, error) {
-	c, err := NewConn(appPrefix)
+	c, err := newRedisStore(appPrefix)
 	if err != nil {
 		return nil, err
 	}
@@ -91,8 +91,8 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
 			}
 
 			po := reflect.New(t)
-			err = r.store.Load(id, po.Interface())
-			if err == ErrNotFound {
+			err = r.store.load(id, po.Interface())
+			if err == errNotFound {
 				http.Error(w, rq.URL.Path + " not found.", http.StatusNotFound)
 				return
 			}
@@ -157,7 +157,7 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
 		}
 
 		// save the object to DB
-		err = r.store.Save(po.Interface())
+		err = r.store.save(po.Interface())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -190,8 +190,8 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
 				return
 			}
 
-			err = r.store.Delete(t.Name(), id)
-			if err == ErrNotFound {
+			err = r.store.delete(t.Name(), id)
+			if err == errNotFound {
 				http.Error(w, rq.URL.Path + " not found.", http.StatusNotFound)
 				return
 			}

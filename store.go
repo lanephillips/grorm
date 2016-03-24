@@ -8,33 +8,40 @@ import (
 	"strconv"
 )
 
-type Conn struct {
+type store interface {
+	save(object interface{}) error
+	load(id uint64, object interface{}) error
+	delete(typeName string, id uint64) error
+	close()
+}
+
+var errNotFound = errors.New("grorm: Not found.")
+
+type redisStore struct {
 	conn redis.Conn
 	appPrefix string
 }
 
-var ErrNotFound = errors.New("grorm: Not found.")
-
-func NewConn(appPrefix string) (*Conn, error) {
-	var c Conn
+func newRedisStore(appPrefix string) (*redisStore, error) {
 	// TODO: user should be able to pass in own args
 	rc, err := redis.Dial("tcp", ":6379")
     if err != nil {
         return nil, err
     }
 
+	var c redisStore
     c.conn = rc
     c.appPrefix = appPrefix
 
     return &c, nil
 }
 
-func (c *Conn) Close() {
+func (c *redisStore) close() {
 	c.conn.Close()
 }
 
 // object must be a pointer to a settable object
-func (c *Conn) Save(object interface{}) error {
+func (c *redisStore) save(object interface{}) error {
 	t := reflect.TypeOf(object)
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
@@ -85,7 +92,7 @@ func (c *Conn) Save(object interface{}) error {
 	return nil
 }
 
-func (c *Conn) Load(id uint64, object interface{}) error {
+func (c *redisStore) load(id uint64, object interface{}) error {
 	t := reflect.TypeOf(object)
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
@@ -109,7 +116,7 @@ func (c *Conn) Load(id uint64, object interface{}) error {
 		return err
 	}
 	if len(values) == 0 {
-		return ErrNotFound
+		return errNotFound
 	}
 
 	for name, value := range values {
@@ -149,14 +156,14 @@ func (c *Conn) Load(id uint64, object interface{}) error {
 	return nil
 }
 
-func (c *Conn) Delete(typeName string, id uint64) error {
+func (c *redisStore) delete(typeName string, id uint64) error {
 	key := fmt.Sprintf("%v:%v:%v", c.appPrefix, typeName, id)
 	count, err := redis.Int64(c.conn.Do("DEL", key))
 	if err != nil {
 		return err
 	}
 	if count == 0 {
-		return ErrNotFound
+		return errNotFound
 	}
 	return nil
 }
