@@ -10,13 +10,20 @@ import (
 )
 
 type Router struct {
+	store *Conn
 	types map[string]reflect.Type
 }
 
-func NewRouter() *Router {
+func NewRouter(appPrefix string) (*Router, error) {
+	c, err := NewConn(appPrefix)
+	if err != nil {
+		return nil, err
+	}
+
 	var r Router
+	r.store = c
 	r.types = map[string]reflect.Type{}
-	return &r
+	return &r, nil
 }
 
 func (r *Router) RegisterType(object interface{}, nameOrNil *string) error {
@@ -83,7 +90,8 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
 
 	if rq.Method == "POST" {
 		// create new object from JSON in body
-		o := reflect.New(t).Elem()
+		po := reflect.New(t)
+		o := po.Elem()
 
 		// fill in fields from JSON
 		// TODO: this all will probably need to be factored out for PUT
@@ -121,7 +129,12 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
 			f.Set(v2)
 		}
 
-		// TODO: save the object in Redis
+		// save the object to DB
+		err = r.store.Save(po.Interface())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 
 		// return JSON including the new id
 		w.Header().Set("Content-Type", "application/json")

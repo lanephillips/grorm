@@ -10,10 +10,15 @@ type Thing struct {
 }
 
 func TestServer(t *testing.T) {
-	r := NewRouter()
-	err := r.RegisterType(Thing{}, nil)
+	r, err := NewRouter("grormtest")
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	err = r.RegisterType(Thing{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	
 	r.ListenAndServe(":8080")
 }
