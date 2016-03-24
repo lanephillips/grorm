@@ -1,7 +1,6 @@
 package grorm
 
 import (
-    "fmt"
     "encoding/json"
     "net/http"
     "reflect"
@@ -83,42 +82,10 @@ func (r *router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
 
 		// create new object from JSON in body
 		po := reflect.New(*t)
-		o := po.Elem()
-
-		// fill in fields from JSON
-		// TODO: this all will probably need to be factored out for PUT
-		// TODO: accept zero value for unspecified field unless annotated otherwise
-		d := json.NewDecoder(rq.Body)
-		m := map[string]interface{}{}
-		err = d.Decode(&m)
+		err = copyJsonToObject(rq.Body, po)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
-		}
-
-		for k, v := range m {
-			// error if id is specified
-			if k == "Id" {
-				http.Error(w, "You may not set the 'Id' field.", http.StatusBadRequest)
-				return
-			}
-
-			f := o.FieldByName(k)
-			// error on extra fields
-			if !f.IsValid() || !f.CanSet() {
-				http.Error(w, fmt.Sprintf("Request body specifies field '%v' which cannot be set.", k), http.StatusBadRequest)
-				return
-			}
-
-			v2 := reflect.ValueOf(v)
-			if !v2.Type().AssignableTo(f.Type()) {
-				http.Error(w, fmt.Sprintf("Field '%v' cannot take the value %v.", k, v), http.StatusBadRequest)
-				return
-			}
-
-			// actually set value
-			// TODO: probably should try to catch panic if possible, might have forgotten something above
-			f.Set(v2)
 		}
 
 		// save the object to DB

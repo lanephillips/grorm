@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/garyburd/redigo/redis"
+	"io"
+	"encoding/json"
 	"reflect"
 	"strconv"
 )
@@ -16,6 +18,51 @@ type store interface {
 }
 
 var errNotFound = errors.New("grorm: Not found.")
+
+// po is pointer to settable struct object
+func copyJsonToObject(r io.Reader, po reflect.Value) error {
+	if po.Kind() != reflect.Ptr {
+		// TODO: this in internal error, but others are client error
+		return fmt.Errorf("Argument is a %v, not a pointer to struct.", po.Kind())
+	}
+	o := po.Elem()
+	if o.Kind() != reflect.Struct {
+		// TODO: this in internal error, but others are client error
+		return fmt.Errorf("Argument is a pointer to %v, not a pointer to struct.", o.Kind())
+	}
+
+	// fill in fields from JSON
+	// TODO: accept zero value for unspecified field unless annotated otherwise
+	d := json.NewDecoder(r)
+	m := map[string]interface{}{}
+	err := d.Decode(&m)
+	if err != nil {
+		return err
+	}
+
+	for k, v := range m {
+		// error if id is specified
+		if k == "Id" {
+			return fmt.Errorf("You may not set the 'Id' field.")
+		}
+
+		f := o.FieldByName(k)
+		// error on extra fields
+		if !f.IsValid() || !f.CanSet() {
+			return fmt.Errorf("Request body specifies field '%v' which cannot be set.", k)
+		}
+
+		v2 := reflect.ValueOf(v)
+		if !v2.Type().AssignableTo(f.Type()) {
+			return fmt.Errorf("Field '%v' cannot take the value %v.", k, v)
+		}
+
+		// actually set value
+		// TODO: probably should try to catch panic if possible, might have forgotten something above
+		f.Set(v2)
+	}
+	return nil
+}
 
 type redisStore struct {
 	conn redis.Conn
