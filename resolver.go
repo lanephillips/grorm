@@ -18,36 +18,15 @@ func newResolver(server *Server) *resolver {
 	return &r
 }
 
-func (r *resolver) registerType(object interface{}, nameOrNil *string) error {
-	t := reflect.TypeOf(object)
-
-	if t.Kind() != reflect.Struct {
-		return newConfigurationError(nil, "A struct type is required.")
+func (r *resolver) registerType(exampleObject interface{}, nameOrNil *string) error {
+	md, err := getMetaType(exampleObject)
+	if err != nil {
+		return err
 	}
-
-	md := &metaType{ t, -1, "" }
-
-	for i := 0; i < t.NumField(); i++ {
-		f := t.Field(i)
-		if f.Type == intPrimaryKeyType {
-			if md.id < 0 {
-				md.id = i
-				md.idName = f.Name
-			} else {
-				return newConfigurationError(nil, "Type '%v' has more than one primary key field.", t.Name())
-			}
-		}
-	}
-
-	if md.id < 0 {
-		return newConfigurationError(nil, "Type '%v' is missing a primary key field.", t.Name())
-	}
-
-	// TODO: build ACL objects from field annotations
 
 	// TODO: field names are still capitalized, do we really want Go style to leak through? maybe have pluggable mappers
 	if nameOrNil == nil {
-		s := strings.ToLower(t.Name())
+		s := strings.ToLower(md.t.Name())
 		nameOrNil = &s
 	}
 

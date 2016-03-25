@@ -6,10 +6,9 @@ import (
 )
 
 // marks the struct field as the identifier of its object, taking int values
-type IntPrimaryKey uint64
+type PrimaryKey uint64
 
 // TODO: support these, too
-type StringPrimaryKey string
 type DateCreated time.Time
 type DateModified time.Time
 type IntIndex int64

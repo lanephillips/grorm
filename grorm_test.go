@@ -5,7 +5,7 @@ import (
 )
 
 type Thing struct {
-	Id IntPrimaryKey
+	Id PrimaryKey
 	Name string
 }
 
@@ -19,6 +19,6 @@ func TestServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	
+
 	r.ListenAndServe(":8080")
 }

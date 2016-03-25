@@ -107,7 +107,7 @@ func (c *redisStore) save(object interface{}) error {
 		if err != nil {
 			return err
 		}
-		newIdV := reflect.ValueOf(IntPrimaryKey(newId))
+		newIdV := reflect.ValueOf(PrimaryKey(newId))
 		// fmt.Printf("Attempting to set %v to %v.\n", id, newIdV)
 		id.Set(newIdV)
 		// fmt.Printf("Incremented %v to %v.\n", keyName, newId)
@@ -151,7 +151,7 @@ func (c *redisStore) load(id uint64, object interface{}) error {
 	if !idf.IsValid() || idf.Kind() != reflect.Uint64 {
 		return newInternalError(nil, "Object does not have an Id field.")
 	}
-	idf.Set(reflect.ValueOf(IntPrimaryKey(id)))
+	idf.Set(reflect.ValueOf(PrimaryKey(id)))
 
 	key := fmt.Sprintf("%v:%v:%v", c.appPrefix, t.Name(), id)
 	values, err := redis.StringMap(c.conn.Do("HGETALL", key))
