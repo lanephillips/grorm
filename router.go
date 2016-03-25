@@ -94,6 +94,11 @@ func (r *router) handleRequest(w http.ResponseWriter, rq *http.Request) error {
 		if err != nil {
 			return err
 		}
+		// save the object to DB
+		err = r.server.store.save(po.Interface())
+		if err != nil {
+			return err
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		e := json.NewEncoder(w)
