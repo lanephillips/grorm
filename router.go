@@ -2,6 +2,7 @@ package grorm
 
 import (
     "encoding/json"
+    "fmt"
     "net/http"
     "reflect"
     "strings"
@@ -15,7 +16,7 @@ func newRouter(server *Server) *router {
 	return &router{ server }
 }
 
-func (r *router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
+func (r *router) handleRequest(w http.ResponseWriter, rq *http.Request) error {
 	// TODO: rate limiting
 	// TODO: authenticate user
 	// TODO: strip api prefix
@@ -29,29 +30,19 @@ func (r *router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
 
 	if rq.Method == "GET" {
 		t, po, err := r.server.resolver.resolvePathObject(path)
-		if err == errBadId || err == errPathExtra {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if err == errNotFound {
-			http.Error(w, rq.URL.Path + " not found.", http.StatusNotFound)
-			return
-		}
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+			return err
 		}
 
 		if po == nil {
 			// TODO: search all objects filter with query parms
-			http.Error(w, (*t).Name(), http.StatusNotImplemented)
-			return
+			return newHttpError(http.StatusNotImplemented, nil, (*t).Name())
 		} else {
 			// or get object by id
 			w.Header().Set("Content-Type", "application/json")
 			e := json.NewEncoder(w)
 			e.Encode(po.Interface())
-			return
+			return nil
 		}
 
 		// TODO: or get scalar field
@@ -62,76 +53,52 @@ func (r *router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
 		// path should just be a type
 		// TODO: or add object id to list field
 		t, id, err := r.server.resolver.resolvePath(path)
-		if err == errBadId || err == errPathExtra {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		// TODO: too much error checking, maybe make more specialized implementations of resolvePath
-		if id != nil {
-			http.Error(w, "You can't POST to an Id.", http.StatusBadRequest)
-			return
-		}
-		if err == errNotFound {
-			http.Error(w, rq.URL.Path + " not found.", http.StatusNotFound)
-			return
-		}
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+			return err
+		}
+		if id != nil {
+			return newBadRequestError(nil, "You can't POST to an Id.")
 		}
 
 		// create new object from JSON in body
 		po := reflect.New(*t)
 		err = copyJsonToObject(rq.Body, po)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+			return err
 		}
 
 		// save the object to DB
 		err = r.server.store.save(po.Interface())
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+			return err
 		}
 
 		// return JSON including the new id
 		w.Header().Set("Content-Type", "application/json")
 		e := json.NewEncoder(w)
 		e.Encode(po.Interface())
-	    return
+	    return nil
 	}
 
 	if rq.Method == "PUT" {
 		// TODO: update object with id with values from JSON
 		_, po, err := r.server.resolver.resolvePathObject(path)
-		if err == errBadId || err == errPathExtra {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if err == errNotFound {
-			http.Error(w, rq.URL.Path + " not found.", http.StatusNotFound)
-			return
-		}
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+			return err
 		}
 		if po == nil {
-			http.Error(w, "No object Id was given.", http.StatusBadRequest)
-			return
+			return newBadRequestError(nil, "No object Id was given.")
 		}
 
 		err = copyJsonToObject(rq.Body, *po)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+			return err
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		e := json.NewEncoder(w)
 		e.Encode((*po).Interface())
-		return
+		return nil
 
 		// TODO: or update scalar field
 		// TODO: or set whole list field
@@ -140,35 +107,40 @@ func (r *router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
 	if rq.Method == "DELETE" {
 		// delete object with id
 		t, id, err := r.server.resolver.resolvePath(path)
-		if err == errBadId || err == errPathExtra {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if err == errNotFound {
-			http.Error(w, rq.URL.Path + " not found.", http.StatusNotFound)
-			return
+		if err != nil {
+			return err
 		}
 		if id == nil {
-			http.Error(w, "Missing Id.", http.StatusBadRequest)
-			return
-		}
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+			return newBadRequestError(nil, "Missing Id.")
 		}
 
 		err = r.server.store.delete((*t).Name(), *id)
-		if err == errNotFound {
-			http.Error(w, rq.URL.Path + " not found.", http.StatusNotFound)
-			return
-		}
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+			return err
 		}
-		return
+		return nil
 		// TODO: or remove object id from a list field
 	}
 
-    http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
+    return newHttpError(http.StatusMethodNotAllowed, nil, "Method not allowed.")
+}
+
+func (r *router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
+	err := r.handleRequest(w, rq)
+
+	switch err2 := err.(type) {
+	case nil:
+		
+	case *httpError:
+		http.Error(w, err.Error(), err2.status)
+	case *notFoundError:
+		http.Error(w, err.Error(), http.StatusNotFound)
+	case *badRequestError:
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	case *internalError:
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	default:
+		fmt.Println("Unhandled error: " + err.Error())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }

@@ -1,7 +1,6 @@
 package grorm
 
 import (
-	"errors"
 	"fmt"
 	"github.com/garyburd/redigo/redis"
 	"io"
@@ -17,18 +16,16 @@ type store interface {
 	close()
 }
 
-var errNotFound = errors.New("grorm: Not found.")
+var errNotFound = newNotFoundError(nil, "Not found.")
 
 // po is pointer to settable struct object
 func copyJsonToObject(r io.Reader, po reflect.Value) error {
 	if po.Kind() != reflect.Ptr {
-		// TODO: this in internal error, but others are client error
-		return fmt.Errorf("Argument is a %v, not a pointer to struct.", po.Kind())
+		return newInternalError(nil, "Argument is a %v, not a pointer to struct.", po.Kind())
 	}
 	o := po.Elem()
 	if o.Kind() != reflect.Struct {
-		// TODO: this in internal error, but others are client error
-		return fmt.Errorf("Argument is a pointer to %v, not a pointer to struct.", o.Kind())
+		return newInternalError(nil, "Argument is a pointer to %v, not a pointer to struct.", o.Kind())
 	}
 
 	// fill in fields from JSON
@@ -37,28 +34,29 @@ func copyJsonToObject(r io.Reader, po reflect.Value) error {
 	m := map[string]interface{}{}
 	err := d.Decode(&m)
 	if err != nil {
-		return err
+		return newBadRequestError(err, "Malformed JSON")
 	}
 
 	for k, v := range m {
 		// error if id is specified
 		if k == "Id" {
-			return fmt.Errorf("You may not set the 'Id' field.")
+			return newBadRequestError(nil, "You may not set the 'Id' field.")
 		}
 
 		f := o.FieldByName(k)
 		// error on extra fields
 		if !f.IsValid() || !f.CanSet() {
-			return fmt.Errorf("Request body specifies field '%v' which cannot be set.", k)
+			return newBadRequestError(nil, "Request body specifies field '%v' which cannot be set.", k)
 		}
 
 		v2 := reflect.ValueOf(v)
 		if !v2.Type().AssignableTo(f.Type()) {
-			return fmt.Errorf("Field '%v' cannot take the value %v.", k, v)
+			return newBadRequestError(nil, "Field '%v' cannot take the value %v.", k, v)
 		}
 
 		// actually set value
 		// TODO: probably should try to catch panic if possible, might have forgotten something above
+		// TODO: can we defer and recover and set the return value of this function?
 		f.Set(v2)
 	}
 	return nil
@@ -93,16 +91,16 @@ func (c *redisStore) save(object interface{}) error {
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 		if t.Kind() != reflect.Struct {
-			return fmt.Errorf("Object is a pointer to %v, not a pointer to struct.", t.Kind())
+			return newInternalError(nil, "Object is a pointer to %v, not a pointer to struct.", t.Kind())
 		}
 	} else {
-		return fmt.Errorf("Object is a %v, not a pointer to struct.", t.Kind())
+		return newInternalError(nil, "Object is a %v, not a pointer to struct.", t.Kind())
 	}
 	v := reflect.ValueOf(object).Elem()
 
 	id := v.FieldByName("Id")
 	if !id.IsValid() || id.Kind() != reflect.Uint64 {
-		return fmt.Errorf("Object does not have an Id field.")
+		return newInternalError(nil, "Object does not have an Id field.")
 	}
 
 	if id.Uint() == 0 {
@@ -144,16 +142,16 @@ func (c *redisStore) load(id uint64, object interface{}) error {
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 		if t.Kind() != reflect.Struct {
-			return fmt.Errorf("Object is a pointer to %v, not a pointer to struct.", t.Kind())
+			return newInternalError(nil, "Object is a pointer to %v, not a pointer to struct.", t.Kind())
 		}
 	} else {
-		return fmt.Errorf("Object is a %v, not a pointer to struct.", t.Kind())
+		return newInternalError(nil, "Object is a %v, not a pointer to struct.", t.Kind())
 	}
 	v := reflect.ValueOf(object).Elem()
 
 	idf := v.FieldByName("Id")
 	if !idf.IsValid() || idf.Kind() != reflect.Uint64 {
-		return fmt.Errorf("Object does not have an Id field.")
+		return newInternalError(nil, "Object does not have an Id field.")
 	}
 	idf.Set(reflect.ValueOf(id))
 

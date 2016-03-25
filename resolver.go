@@ -2,7 +2,6 @@ package grorm
 
 import (
     "fmt"
-    "errors"
     "reflect"
     "strconv"
     "strings"
@@ -49,8 +48,8 @@ func (r *resolver) registerType(object interface{}, nameOrNil *string) error {
 	return nil
 }
 
-var errBadId = errors.New("grorm: Malformed Id.")
-var errPathExtra = errors.New("grorm: Extra chars in path.")
+var errBadId = newBadRequestError(nil, "Malformed Id.")
+var errPathExtra = newBadRequestError(nil, "Extra chars in path.")
 
 func (r *resolver) resolvePath(path []string) (*reflect.Type, *uint64, error) {
 	// this happens when we split on / and path starts with /
