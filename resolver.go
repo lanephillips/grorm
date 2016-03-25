@@ -1,7 +1,6 @@
 package grorm
 
 import (
-    "reflect"
     "strconv"
     "strings"
 )
@@ -35,7 +34,7 @@ func (r *resolver) registerType(exampleObject interface{}, nameOrNil *string) er
 	return nil
 }
 
-func (r *resolver) resolvePath(path []string) (*reflect.Type, *uint64, error) {
+func (r *resolver) resolvePath(path []string) (*metaType, *uint64, error) {
 	// this happens when we split on / and path starts with /
 	if len(path) > 1 && path[0] == "" {
 		path = path[1:]
@@ -54,7 +53,7 @@ func (r *resolver) resolvePath(path []string) (*reflect.Type, *uint64, error) {
 
 	if len(path) == 0 {
 		// path only went as far as type name
-		return &md.t, nil, nil
+		return md, nil, nil
 	}
 
 	// parse id
@@ -69,26 +68,26 @@ func (r *resolver) resolvePath(path []string) (*reflect.Type, *uint64, error) {
 		return nil, nil, newBadRequestError(nil, "Extra chars in path.")
 	}
 
-	return &md.t, &id, nil
+	return md, &id, nil
 }
 
 // value has kind pointer to struct
 // will return notFoundError if id parses but retrieves no object
-func (r *resolver) resolvePathObject(path []string) (*reflect.Type, *reflect.Value, error) {
-	t, id, err := r.resolvePath(path)
+func (r *resolver) resolvePathObject(path []string) (*metaType, *metaValue, error) {
+	mt, id, err := r.resolvePath(path)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	if id == nil {
-		return t, nil, nil
+		return mt, nil, nil
 	}
 
-	po := reflect.New(*t)
-	err = r.server.store.load(*id, po.Interface())
+	mv := mt.newValue()
+	err = r.server.store.load(*id, mv.p.Interface())
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return t, &po, nil
+	return mt, mv, nil
 }

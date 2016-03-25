@@ -29,19 +29,19 @@ func (r *router) handleRequest(w http.ResponseWriter, rq *http.Request) error {
 	// TODO: test ACL for method and user
 
 	if rq.Method == "GET" {
-		t, po, err := r.server.resolver.resolvePathObject(path)
+		mt, mv, err := r.server.resolver.resolvePathObject(path)
 		if err != nil {
 			return err
 		}
 
-		if po == nil {
+		if mv == nil {
 			// TODO: search all objects filter with query parms
-			return newHttpError(http.StatusNotImplemented, nil, (*t).Name())
+			return newHttpError(http.StatusNotImplemented, nil, mt.t.Name())
 		} else {
 			// or get object by id
 			w.Header().Set("Content-Type", "application/json")
 			e := json.NewEncoder(w)
-			e.Encode(po.Interface())
+			e.Encode(mv.p.Interface())
 			return nil
 		}
 
@@ -52,7 +52,7 @@ func (r *router) handleRequest(w http.ResponseWriter, rq *http.Request) error {
 	if rq.Method == "POST" {
 		// path should just be a type
 		// TODO: or add object id to list field
-		t, id, err := r.server.resolver.resolvePath(path)
+		mt, id, err := r.server.resolver.resolvePath(path)
 		if err != nil {
 			return err
 		}
@@ -61,7 +61,7 @@ func (r *router) handleRequest(w http.ResponseWriter, rq *http.Request) error {
 		}
 
 		// create new object from JSON in body
-		po := reflect.New(*t)
+		po := reflect.New(mt.t)
 		err = copyJsonToObject(rq.Body, po)
 		if err != nil {
 			return err
@@ -82,27 +82,27 @@ func (r *router) handleRequest(w http.ResponseWriter, rq *http.Request) error {
 
 	if rq.Method == "PUT" {
 		// TODO: update object with id with values from JSON
-		_, po, err := r.server.resolver.resolvePathObject(path)
+		_, mv, err := r.server.resolver.resolvePathObject(path)
 		if err != nil {
 			return err
 		}
-		if po == nil {
+		if mv == nil {
 			return newBadRequestError(nil, "No object Id was given.")
 		}
 
-		err = copyJsonToObject(rq.Body, *po)
+		err = copyJsonToObject(rq.Body, mv.p)
 		if err != nil {
 			return err
 		}
 		// save the object to DB
-		err = r.server.store.save(po.Interface())
+		err = r.server.store.save(mv.p.Interface())
 		if err != nil {
 			return err
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		e := json.NewEncoder(w)
-		e.Encode((*po).Interface())
+		e.Encode(mv.p.Interface())
 		return nil
 
 		// TODO: or update scalar field
@@ -111,7 +111,7 @@ func (r *router) handleRequest(w http.ResponseWriter, rq *http.Request) error {
 
 	if rq.Method == "DELETE" {
 		// delete object with id
-		t, id, err := r.server.resolver.resolvePath(path)
+		mt, id, err := r.server.resolver.resolvePath(path)
 		if err != nil {
 			return err
 		}
@@ -119,7 +119,7 @@ func (r *router) handleRequest(w http.ResponseWriter, rq *http.Request) error {
 			return newBadRequestError(nil, "Missing Id.")
 		}
 
-		err = r.server.store.delete((*t).Name(), *id)
+		err = r.server.store.delete(mt.t.Name(), *id)
 		if err != nil {
 			return err
 		}
@@ -135,7 +135,7 @@ func (r *router) ServeHTTP(w http.ResponseWriter, rq *http.Request) {
 
 	switch err2 := err.(type) {
 	case nil:
-		
+
 	case *httpError:
 		http.Error(w, err.Error(), err2.status)
 	case *notFoundError:
