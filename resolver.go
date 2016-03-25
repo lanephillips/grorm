@@ -8,13 +8,13 @@ import (
 
 type resolver struct {
 	server *Server
-	types map[string]reflect.Type
+	types map[string]*metaType
 }
 
 func newResolver(server *Server) *resolver {
 	var r resolver
 	r.server = server
-	r.types = map[string]reflect.Type{}
+	r.types = map[string]*metaType{}
 	return &r
 }
 
@@ -25,13 +25,22 @@ func (r *resolver) registerType(object interface{}, nameOrNil *string) error {
 		return newConfigurationError(nil, "A struct type is required.")
 	}
 
-	// TODO: check that struct conforms
-	f, ok := t.FieldByName("Id")
-	if !ok {
-		return newConfigurationError(nil, "An 'Id' field is required.")
+	md := &metaType{ t, -1, "" }
+
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		if f.Type == intPrimaryKeyType {
+			if md.id < 0 {
+				md.id = i
+				md.idName = f.Name
+			} else {
+				return newConfigurationError(nil, "Type '%v' has more than one primary key field.", t.Name())
+			}
+		}
 	}
-	if f.Type.Kind() != reflect.Uint64 {
-		return newConfigurationError(nil, "Type of 'Id' must be uint64.")
+
+	if md.id < 0 {
+		return newConfigurationError(nil, "Type '%v' is missing a primary key field.", t.Name())
 	}
 
 	// TODO: build ACL objects from field annotations
@@ -42,7 +51,7 @@ func (r *resolver) registerType(object interface{}, nameOrNil *string) error {
 		nameOrNil = &s
 	}
 
-	r.types[*nameOrNil] = t
+	r.types[*nameOrNil] = md
 	// log.Printf("Registered type %v with path \"%v\".\n", t, *nameOrNil)
 	return nil
 }
@@ -59,14 +68,14 @@ func (r *resolver) resolvePath(path []string) (*reflect.Type, *uint64, error) {
 
 	// look up type name
 	name, path := path[0], path[1:]
-	t, ok := r.types[name]
+	md, ok := r.types[name]
 	if !ok {
 		return nil, nil, newNotFoundError(nil, "Type %v not found.", name)
 	}
 
 	if len(path) == 0 {
 		// path only went as far as type name
-		return &t, nil, nil
+		return &md.t, nil, nil
 	}
 
 	// parse id
@@ -81,7 +90,7 @@ func (r *resolver) resolvePath(path []string) (*reflect.Type, *uint64, error) {
 		return nil, nil, newBadRequestError(nil, "Extra chars in path.")
 	}
 
-	return &t, &id, nil
+	return &md.t, &id, nil
 }
 
 // value has kind pointer to struct

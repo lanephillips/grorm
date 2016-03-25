@@ -2,7 +2,19 @@ package grorm
 
 import (
     "net/http"
+    "time"
 )
+
+// marks the struct field as the identifier of its object, taking int values
+type IntPrimaryKey uint64
+
+// TODO: support these, too
+type StringPrimaryKey string
+type DateCreated time.Time
+type DateModified time.Time
+type IntIndex int64
+type StringIndex string
+type DateIndex time.Time
 
 type Server struct {
 	router *router

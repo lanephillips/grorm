@@ -5,7 +5,7 @@ import (
 )
 
 type Thing struct {
-	Id uint64
+	Id IntPrimaryKey
 	Name string
 }
 
