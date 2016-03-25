@@ -47,9 +47,6 @@ func (r *resolver) registerType(object interface{}, nameOrNil *string) error {
 	return nil
 }
 
-var errBadId = newBadRequestError(nil, "Malformed Id.")
-var errPathExtra = newBadRequestError(nil, "Extra chars in path.")
-
 func (r *resolver) resolvePath(path []string) (*reflect.Type, *uint64, error) {
 	// this happens when we split on / and path starts with /
 	if len(path) > 1 && path[0] == "" {
@@ -57,14 +54,14 @@ func (r *resolver) resolvePath(path []string) (*reflect.Type, *uint64, error) {
 	}
 
 	if len(path) == 0 {
-		return nil, nil, errNotFound
+		return nil, nil, newNotFoundError(nil, "/ not found.")
 	}
 
 	// look up type name
 	name, path := path[0], path[1:]
 	t, ok := r.types[name]
 	if !ok {
-		return nil, nil, errNotFound
+		return nil, nil, newNotFoundError(nil, "Type %v not found.", name)
 	}
 
 	if len(path) == 0 {
@@ -76,19 +73,19 @@ func (r *resolver) resolvePath(path []string) (*reflect.Type, *uint64, error) {
 	sid, path := path[0], path[1:]
 	id, err := strconv.ParseUint(sid, 10, 64)
 	if err != nil {
-		return nil, nil, errBadId
+		return nil, nil, newBadRequestError(err, "Malformed Id.")
 	}
 
 	if len(path) > 0 {
 		// don't allow extra junk after id
-		return nil, nil, errPathExtra
+		return nil, nil, newBadRequestError(nil, "Extra chars in path.")
 	}
 
 	return &t, &id, nil
 }
 
 // value has kind pointer to struct
-// will return errNotFound if id parses but retrieves no object
+// will return notFoundError if id parses but retrieves no object
 func (r *resolver) resolvePathObject(path []string) (*reflect.Type, *reflect.Value, error) {
 	t, id, err := r.resolvePath(path)
 	if err != nil {

@@ -16,8 +16,6 @@ type store interface {
 	close()
 }
 
-var errNotFound = newNotFoundError(nil, "Not found.")
-
 // po is pointer to settable struct object
 func copyJsonToObject(r io.Reader, po reflect.Value) error {
 	if po.Kind() != reflect.Ptr {
@@ -161,7 +159,7 @@ func (c *redisStore) load(id uint64, object interface{}) error {
 		return err
 	}
 	if len(values) == 0 {
-		return errNotFound
+		return newNotFoundError(nil, "%v with id %v not found.", t.Name(), id)
 	}
 
 	for name, value := range values {
@@ -208,7 +206,7 @@ func (c *redisStore) delete(typeName string, id uint64) error {
 		return err
 	}
 	if count == 0 {
-		return errNotFound
+		return newNotFoundError(nil, "%v with id %v not found.", typeName, id)
 	}
 	return nil
 }
