@@ -1,7 +1,6 @@
 package grorm
 
 import (
-    "fmt"
     "reflect"
     "strconv"
     "strings"
@@ -23,16 +22,16 @@ func (r *resolver) registerType(object interface{}, nameOrNil *string) error {
 	t := reflect.TypeOf(object)
 
 	if t.Kind() != reflect.Struct {
-		return fmt.Errorf("A struct type is required.")
+		return newConfigurationError(nil, "A struct type is required.")
 	}
 
 	// TODO: check that struct conforms
 	f, ok := t.FieldByName("Id")
 	if !ok {
-		return fmt.Errorf("An 'Id' field is required.")
+		return newConfigurationError(nil, "An 'Id' field is required.")
 	}
 	if f.Type.Kind() != reflect.Uint64 {
-		return fmt.Errorf("Type of 'Id' must be uint64.")
+		return newConfigurationError(nil, "Type of 'Id' must be uint64.")
 	}
 
 	// TODO: build ACL objects from field annotations
