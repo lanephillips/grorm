@@ -76,43 +76,26 @@ func (c *redisStore) close() {
 }
 
 // object must be a pointer to a settable object
-func (c *redisStore) save(object interface{}) error {
-	t := reflect.TypeOf(object)
-	if t.Kind() == reflect.Ptr {
-		t = t.Elem()
-		if t.Kind() != reflect.Struct {
-			return newInternalError(nil, "Object is a pointer to %v, not a pointer to struct.", t.Kind())
-		}
-	} else {
-		return newInternalError(nil, "Object is a %v, not a pointer to struct.", t.Kind())
-	}
-	v := reflect.ValueOf(object).Elem()
-
-	id := v.FieldByName("Id")
-	if !id.IsValid() || id.Kind() != reflect.Uint64 {
-		return newInternalError(nil, "Object does not have an Id field.")
-	}
-
-	if id.Uint() == 0 {
-		keyName := fmt.Sprintf("%v:%v", c.appPrefix, t.Name())
+func (c *redisStore) save(mv *metaValue) error {
+	if mv.getPrimaryKey() == 0 {
+		keyName := fmt.Sprintf("%v:%v", c.appPrefix, mv.mt.t.Name())
 		newId, err := redis.Uint64(c.conn.Do("INCR", keyName))
 		if err != nil {
 			return err
 		}
-		newIdV := reflect.ValueOf(PrimaryKey(newId))
-		// fmt.Printf("Attempting to set %v to %v.\n", id, newIdV)
-		id.Set(newIdV)
-		// fmt.Printf("Incremented %v to %v.\n", keyName, newId)
+		mv.setPrimaryKey(newId)
 	}
 
-	key := fmt.Sprintf("%v:%v:%v", c.appPrefix, t.Name(), id.Uint())
+	key := mv.getKeyString(c.appPrefix)
 	args := []interface{}{ key }
 
-	for i := 0; i < t.NumField(); i++ {
-		name := t.Field(i).Name
-		if name == "Id" {
+	v := mv.p.Elem()
+	for i := 0; i < mv.mt.t.NumField(); i++ {
+		if mv.mt.id == i {
 			continue
 		}
+
+		name := mv.mt.t.Field(i).Name
 		value := v.Field(i).Interface()
 
 		args = append(args, name, value)

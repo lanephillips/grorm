@@ -67,7 +67,7 @@ func (r *router) handleRequest(w http.ResponseWriter, rq *http.Request) error {
 		}
 
 		// save the object to DB
-		err = r.server.store.save(mv.p.Interface())
+		err = r.server.store.save(mv)
 		if err != nil {
 			return err
 		}
@@ -94,7 +94,7 @@ func (r *router) handleRequest(w http.ResponseWriter, rq *http.Request) error {
 			return err
 		}
 		// save the object to DB
-		err = r.server.store.save(mv.p.Interface())
+		err = r.server.store.save(mv)
 		if err != nil {
 			return err
 		}
