@@ -20,5 +20,5 @@ func TestServer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r.ListenAndServe(":8080")
+	r.ListenAndServe("localhost:8080")
 }

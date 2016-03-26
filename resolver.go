@@ -84,7 +84,7 @@ func (r *resolver) resolvePathObject(path []string) (*metaType, *metaValue, erro
 	}
 
 	mv := mt.newValue()
-	err = r.server.store.load(*id, mv.p.Interface())
+	err = r.server.store.load(*id, mv)
 	if err != nil {
 		return nil, nil, err
 	}

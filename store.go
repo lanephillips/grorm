@@ -110,35 +110,21 @@ func (c *redisStore) save(mv *metaValue) error {
 	return nil
 }
 
-func (c *redisStore) load(id uint64, object interface{}) error {
-	t := reflect.TypeOf(object)
-	if t.Kind() == reflect.Ptr {
-		t = t.Elem()
-		if t.Kind() != reflect.Struct {
-			return newInternalError(nil, "Object is a pointer to %v, not a pointer to struct.", t.Kind())
-		}
-	} else {
-		return newInternalError(nil, "Object is a %v, not a pointer to struct.", t.Kind())
-	}
-	v := reflect.ValueOf(object).Elem()
+func (c *redisStore) load(id uint64, mv *metaValue) error {
+	mv.setPrimaryKey(id)
+	v := mv.p.Elem()
 
-	idf := v.FieldByName("Id")
-	if !idf.IsValid() || idf.Kind() != reflect.Uint64 {
-		return newInternalError(nil, "Object does not have an Id field.")
-	}
-	idf.Set(reflect.ValueOf(PrimaryKey(id)))
-
-	key := fmt.Sprintf("%v:%v:%v", c.appPrefix, t.Name(), id)
+	key := mv.getKeyString(c.appPrefix)
 	values, err := redis.StringMap(c.conn.Do("HGETALL", key))
 	if err != nil {
 		return err
 	}
 	if len(values) == 0 {
-		return newNotFoundError(nil, "%v with id %v not found.", t.Name(), id)
+		return newNotFoundError(nil, "%v with id %v not found.", mv.mt.t.Name(), id)
 	}
 
 	for name, value := range values {
-		f, ok := t.FieldByName(name)
+		f, ok := mv.mt.t.FieldByName(name)
 		if !ok {
 			continue
 		}
