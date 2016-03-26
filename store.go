@@ -17,8 +17,6 @@ type store interface {
 }
 
 func copyJsonToObject(r io.Reader, mv *metaValue) error {
-	o := mv.p.Elem()
-
 	// fill in fields from JSON
 	// TODO: accept zero value for unspecified field unless annotated otherwise
 	d := json.NewDecoder(r)
@@ -28,18 +26,19 @@ func copyJsonToObject(r io.Reader, mv *metaValue) error {
 		return newBadRequestError(err, "Malformed JSON")
 	}
 
+	o := mv.p.Elem()
 	for k, v := range m {
 		// error if id is specified
-		if k == "Id" {
-			return newBadRequestError(nil, "You may not set the 'Id' field.")
-		}
-
-		f := o.FieldByName(k)
+		tf, ok := mv.mt.t.FieldByName(k)
 		// error on extra fields
-		if !f.IsValid() || !f.CanSet() {
+		if !ok {
 			return newBadRequestError(nil, "Request body specifies field '%v' which cannot be set.", k)
 		}
+		if tf.Index[0] == mv.mt.id {
+			return newBadRequestError(nil, "You may not set the primary key field.")
+		}
 
+		f := o.Field(tf.Index[0])
 		v2 := reflect.ValueOf(v)
 		if !v2.Type().AssignableTo(f.Type()) {
 			return newBadRequestError(nil, "Field '%v' cannot take the value %v.", k, v)
