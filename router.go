@@ -4,7 +4,6 @@ import (
     "encoding/json"
     "fmt"
     "net/http"
-    "reflect"
     "strings"
 )
 
@@ -61,14 +60,14 @@ func (r *router) handleRequest(w http.ResponseWriter, rq *http.Request) error {
 		}
 
 		// create new object from JSON in body
-		po := reflect.New(mt.t)
-		err = copyJsonToObject(rq.Body, po)
+		mv := mt.newValue()
+		err = copyJsonToObject(rq.Body, mv)
 		if err != nil {
 			return err
 		}
 
 		// save the object to DB
-		err = r.server.store.save(po.Interface())
+		err = r.server.store.save(mv.p.Interface())
 		if err != nil {
 			return err
 		}
@@ -76,7 +75,7 @@ func (r *router) handleRequest(w http.ResponseWriter, rq *http.Request) error {
 		// return JSON including the new id
 		w.Header().Set("Content-Type", "application/json")
 		e := json.NewEncoder(w)
-		e.Encode(po.Interface())
+		e.Encode(mv.p.Interface())
 	    return nil
 	}
 
@@ -90,7 +89,7 @@ func (r *router) handleRequest(w http.ResponseWriter, rq *http.Request) error {
 			return newBadRequestError(nil, "No object Id was given.")
 		}
 
-		err = copyJsonToObject(rq.Body, mv.p)
+		err = copyJsonToObject(rq.Body, mv)
 		if err != nil {
 			return err
 		}

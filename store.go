@@ -16,15 +16,8 @@ type store interface {
 	close()
 }
 
-// po is pointer to settable struct object
-func copyJsonToObject(r io.Reader, po reflect.Value) error {
-	if po.Kind() != reflect.Ptr {
-		return newInternalError(nil, "Argument is a %v, not a pointer to struct.", po.Kind())
-	}
-	o := po.Elem()
-	if o.Kind() != reflect.Struct {
-		return newInternalError(nil, "Argument is a pointer to %v, not a pointer to struct.", o.Kind())
-	}
+func copyJsonToObject(r io.Reader, mv *metaValue) error {
+	o := mv.p.Elem()
 
 	// fill in fields from JSON
 	// TODO: accept zero value for unspecified field unless annotated otherwise
@@ -67,7 +60,7 @@ type redisStore struct {
 
 func newRedisStore(appPrefix string) (*redisStore, error) {
 	// TODO: user should be able to pass in own args
-	rc, err := redis.Dial("tcp", ":6379")
+	rc, err := redis.Dial("tcp", "localhost:6379")
     if err != nil {
         return nil, err
     }
