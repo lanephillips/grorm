@@ -59,6 +59,7 @@ func copyJsonToObject(r io.Reader, mv *metaValue) (err error) {
 		}
 		
 		// golang json decodes all numbers into float64, so convert if needed
+		// TODO: float64 can't represent all possible int64 values
 		if f.Kind() == reflect.Int64 && v2.Kind() == reflect.Float64 {
 			v2 = reflect.ValueOf(int64(v.(float64)))
 		} else if f.Kind() == reflect.Uint64 && v2.Kind() == reflect.Float64 {
@@ -70,6 +71,13 @@ func copyJsonToObject(r io.Reader, mv *metaValue) (err error) {
 				return newBadRequestError(err, "Malformed date: %v.", v)
 			}
 			v2 = reflect.ValueOf(*t)
+		} else if f.Type() == byteSliceType && v2.Kind() == reflect.String {
+			bs := []byte{}
+			err = json.Unmarshal([]byte("\"" + v.(string) + "\""), &bs)
+			if err != nil {
+				return newBadRequestError(err, "Malformed base64: %v.", v)
+			}
+			v2 = reflect.ValueOf(bs)
 		}
 
 		if !v2.Type().AssignableTo(f.Type()) {

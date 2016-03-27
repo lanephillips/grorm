@@ -8,6 +8,7 @@ import (
 
 var primaryKeyType = reflect.TypeOf(PrimaryKey(0))
 var timeType = reflect.TypeOf(time.Time{})
+var byteSliceType = reflect.TypeOf([]byte{})
 
 type metaType struct {
 	// type of the object this metaType represents
