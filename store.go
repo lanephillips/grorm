@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"reflect"
 	"strconv"
+	"time"
 )
 
 type store interface {
@@ -16,18 +17,29 @@ type store interface {
 	close()
 }
 
-func copyJsonToObject(r io.Reader, mv *metaValue) error {
+func copyJsonToObject(r io.Reader, mv *metaValue) (err error) {
 	// fill in fields from JSON
 	// TODO: accept zero value for unspecified field unless annotated otherwise
 	d := json.NewDecoder(r)
 	m := map[string]interface{}{}
-	err := d.Decode(&m)
+	err = d.Decode(&m)
 	if err != nil {
 		return newBadRequestError(err, "Malformed JSON")
 	}
+	
+	// want these accessible in case of panic
+	var k string
+	var v interface{}
+	
+	defer func() {
+		if r := recover(); r != nil {
+			// internal error because we should have already considered all possible panics
+			err = newInternalError(nil, "Panic setting field '%v' to the value %v: %v.", k, v, r)
+		}
+	}()
 
 	o := mv.p.Elem()
-	for k, v := range m {
+	for k, v = range m {
 		// error if id is specified
 		tf, ok := mv.mt.t.FieldByName(k)
 		// error on extra fields
@@ -40,8 +52,28 @@ func copyJsonToObject(r io.Reader, mv *metaValue) error {
 
 		f := o.Field(tf.Index[0])
 		v2 := reflect.ValueOf(v)
+		
+		// if JSON value is "null", consider it as the "zero" value of the target field's type
+		if v == nil {
+			v2 = reflect.Zero(f.Type())
+		}
+		
+		// golang json decodes all numbers into float64, so convert if needed
+		if f.Kind() == reflect.Int64 && v2.Kind() == reflect.Float64 {
+			v2 = reflect.ValueOf(int64(v.(float64)))
+		} else if f.Kind() == reflect.Uint64 && v2.Kind() == reflect.Float64 {
+			v2 = reflect.ValueOf(uint64(v.(float64)))
+		} else if f.Type() == timeType && v2.Kind() == reflect.String {
+			t := &time.Time{}
+			err = t.UnmarshalJSON([]byte("\"" + v.(string) + "\""))
+			if err != nil {
+				return newBadRequestError(err, "Malformed date: %v.", v)
+			}
+			v2 = reflect.ValueOf(*t)
+		}
+
 		if !v2.Type().AssignableTo(f.Type()) {
-			return newBadRequestError(nil, "Field '%v' cannot take the value %v.", k, v)
+			return newBadRequestError(nil, "Field '%v' with type %v cannot take the %v value %v.", k, f.Type(), v2.Type(), v)
 		}
 
 		// actually set value

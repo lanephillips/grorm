@@ -3,9 +3,11 @@ package grorm
 import (
 	"fmt"
 	"reflect"
+	"time"
 )
 
 var primaryKeyType = reflect.TypeOf(PrimaryKey(0))
+var timeType = reflect.TypeOf(time.Time{})
 
 type metaType struct {
 	// type of the object this metaType represents
