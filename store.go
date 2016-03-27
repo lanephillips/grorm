@@ -66,7 +66,7 @@ func copyJsonToObject(r io.Reader, mv *metaValue) (err error) {
 			v2 = reflect.ValueOf(uint64(v.(float64)))
 		} else if f.Type() == timeType && v2.Kind() == reflect.String {
 			t := &time.Time{}
-			err = t.UnmarshalJSON([]byte("\"" + v.(string) + "\""))
+			err = t.UnmarshalText([]byte(v.(string)))
 			if err != nil {
 				return newBadRequestError(err, "Malformed date: %v.", v)
 			}
@@ -85,8 +85,6 @@ func copyJsonToObject(r io.Reader, mv *metaValue) (err error) {
 		}
 
 		// actually set value
-		// TODO: probably should try to catch panic if possible, might have forgotten something above
-		// TODO: can we defer and recover and set the return value of this function?
 		f.Set(v2)
 	}
 	return nil
@@ -137,6 +135,18 @@ func (c *redisStore) save(mv *metaValue) error {
 
 		name := mv.mt.t.Field(i).Name
 		value := v.Field(i).Interface()
+		
+		if mv.mt.t.Field(i).Type == timeType {
+			timev, ok := value.(time.Time)
+			if !ok {
+				return newInternalError(nil, "Shouldn't happen.")
+			}
+			bs, err := timev.MarshalText()
+			if err != nil {
+				return newInternalError(err, "Shouldn't happen.")
+			}
+			value = bs
+		}
 
 		args = append(args, name, value)
 	}
@@ -188,9 +198,36 @@ func (c *redisStore) load(id uint64, mv *metaValue) error {
 				continue
 			}
 			value2 = reflect.ValueOf(i)
+
+		case reflect.Float64:
+			n, err := strconv.ParseFloat(value, 64)
+			if err != nil {
+				continue
+			}
+			value2 = reflect.ValueOf(n)
+
+		case reflect.Bool:
+			n, err := strconv.ParseBool(value)
+			if err != nil {
+				continue
+			}
+			value2 = reflect.ValueOf(n)
 			
 		default:
-			continue
+			if f.Type == byteSliceType {
+				// fmt.Printf("I want to parse '%v' as a byte array.\n", value)
+				value2 = reflect.ValueOf([]byte(value))
+			} else if f.Type == timeType {
+				// fmt.Println("I want to parse '"+value+"' as a time.")
+				t := &time.Time{}
+				err = t.UnmarshalText([]byte(value))
+				if err != nil {
+					return newInternalError(err, "Malformed date: %v.", value)
+				}
+				value2 = reflect.ValueOf(*t)
+			} else {
+				continue
+			}
 		}
 
 		v.FieldByIndex(f.Index).Set(value2)
